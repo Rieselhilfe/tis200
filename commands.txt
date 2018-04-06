@@ -1,0 +1,21 @@
+1 = NOP - No Operation
+2 = MOV <SRC>, <DST>
+3 = SWP
+4 = SAV - Save ACC to BAK
+5 = ADD <SRC> - Add <SRC> to ACC
+6 = SUB <SRC>
+7 = NEG - Negate ACC
+8 = JMP <LABEL> Jump to <LABEL>
+9 = JEZ " - if Acc = 0
+10 = JNZ " - if Acc != 0
+11 = JGZ " - if Acc > 0
+12 = JLZ " - if Acc < 0
+13 = JRO <SRC> - Jump to relative offset
+
+normales layout = 4*3
+inp und outp geht nach oben oder unten
+Register: -999 to 999
+	Acc(a), Bak(b), Nil(n)
+	Left(l), Right(r), Up(u), Down(d)
+	Any(y) - First Node that accepts
+	Last(t) - Last read or written
