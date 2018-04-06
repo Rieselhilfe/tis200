@@ -5,6 +5,7 @@ import (
     "io/ioutil"
     "strings"
     "strconv"
+    "os"
 )
 
 const NOP,MOV,SWP,SAV,ADD,SUB,NEG,JMP,JEZ,JNZ,JGZ,JLZ,JRO = 1,2,3,4,5,6,7,8,9,10,11,12,13
@@ -168,11 +169,12 @@ func (n *node) tick() (wants_to_write bool) {
         }
     case JRO:
         n.pc = (n.pc + command.arg1)%len(n.code)-1
+    case 0:
+        n.pc = -1
     default:
         fmt.Println("unknown command code",command.code)
     }
     n.pc += 1
-    if n.code[n.pc].code==0 {n.pc=0}
     return wants_to_write
 }
 
@@ -211,7 +213,7 @@ func (t *tis) tick() { //method that gets called every tick
                     if ed.written {
                         t.nodes[j].edges[k].written = false
                         t.nodes[j].edges[k].dest.waiting = false
-                        fmt.Println("out",ed.incoming)
+                        fmt.Println("out_node",j,":",ed.incoming)
                     }
                 }
             }
@@ -228,9 +230,10 @@ func (t *tis) run() {
 }
 
 func construct_tis(source string, code string) (ret_tis tis) { //produces the tis-graph
-    text := strings.Split(strings.Trim(source,"\n"),"\n")
+    text := strings.Split(strings.TrimSpace(source),"\n")
     base_config := strings.Split(text[0], " ")
     ret_tis.loc, _ = strconv.Atoi(base_config[0])
+    code_map := code_to_codemap(code, ret_tis.loc)
     ret_tis.inp_amount, _ = strconv.Atoi(base_config[1])
     ret_tis.outp_amount, _ = strconv.Atoi(base_config[2])
     ret_tis.inp_nodes = make([]inp_node, len(text[1:ret_tis.inp_amount+1]))
@@ -239,10 +242,10 @@ func construct_tis(source string, code string) (ret_tis tis) { //produces the ti
         if len(val) <= 2 {continue}
         if i<ret_tis.inp_amount {
             inp_node_string := strings.Split(val, ";")
-            node_string := strings.Split(strings.Trim(inp_node_string[0]," "), " ")
+            node_string := strings.Split(strings.TrimSpace(inp_node_string[0]), " ")
             edge_temp := make([]edge, len(node_string[1:]))
             var values []int
-            for _, v := range strings.Split(strings.Trim(inp_node_string[1]," "), " ") {
+            for _, v := range strings.Split(strings.TrimSpace(inp_node_string[1]), " ") {
                 temp, _ := strconv.Atoi(v)
                 values = append(values, temp)
             }
@@ -266,47 +269,57 @@ func construct_tis(source string, code string) (ret_tis tis) { //produces the ti
                     edge_temp[j].dest = nil
                 }
             }
-            ret_tis.nodes[i-ret_tis.inp_amount] = node{source_to_code(code,ret_tis.loc),0,0,0,edge_temp,false,nil}
+            if code, in := code_map[i-ret_tis.inp_amount-ret_tis.outp_amount]; in {
+                ret_tis.nodes[i-ret_tis.inp_amount] = node{code,0,0,0,edge_temp,false,nil}
+            } else {
+                ret_tis.nodes[i-ret_tis.inp_amount] = node{make([]cmd,ret_tis.loc),0,0,0,edge_temp,false,nil}
+            }
+
         }
     }
     return
 }
 
-func source_to_code(source string, loc int) []cmd { //TODO LABEL
-    code := make([]cmd, loc)
-    for i, val := range strings.Split(source,"\n") {
-        if i>loc {
-            break
-        }
-        cmd_string := strings.Split(val, " ")
-        temp := cmd{cmd_codes[cmd_string[0]],0,0,0}
-        if len(cmd_string) > 1 {
-            if arg1, err := strconv.Atoi(cmd_string[1]); err == nil {
-                temp.arg1 = arg1
-            } else {
-                temp.arg1 = reg_codes[cmd_string[1]]
-                temp.mode |= 2
+func code_to_codemap(source string, loc int) (code_map map[int][]cmd) { //TODO LABEL
+    code_map = make(map[int][]cmd)
+    for j, nod_cod:= range strings.Split(strings.TrimSpace(source),"@")[1:] {
+        temp_code := make([]cmd, loc)
+        if len(strings.Split(strings.TrimSpace(nod_cod),"\n"))<=1 {continue}
+        for i, val := range strings.Split(strings.Trim(nod_cod[1:],"\n"),"\n") {
+            if i>loc {
+                break
             }
-        }
-        if len(cmd_string) > 2 {
-            if arg2, err := strconv.Atoi(cmd_string[2]); err == nil {
-                temp.arg2 = arg2
-            } else {
-                temp.arg2 = reg_codes[cmd_string[2]]
-                temp.mode |= 1
+            cmd_string := strings.Split(val, " ")
+            temp_cmd := cmd{cmd_codes[cmd_string[0]],0,0,0}
+            if len(cmd_string) > 1 {
+                if arg1, err := strconv.Atoi(cmd_string[1]); err == nil {
+                    temp_cmd.arg1 = arg1
+                } else {
+                    temp_cmd.arg1 = reg_codes[cmd_string[1]]
+                    temp_cmd.mode |= 2
+                }
             }
+            if len(cmd_string) > 2 {
+                if arg2, err := strconv.Atoi(cmd_string[2]); err == nil {
+                    temp_cmd.arg2 = arg2
+                } else {
+                    temp_cmd.arg2 = reg_codes[cmd_string[2]]
+                    temp_cmd.mode |= 1
+                }
+            }
+            temp_code[i] = temp_cmd
         }
-        code[i] = temp
+        code_map[j] = temp_code
     }
-    return code
+    return
 }
 
 func main() {
-    source, err := ioutil.ReadFile("test.tis");
+    source, err := ioutil.ReadFile(os.Args[1]);
     if err != nil {
         panic(err)
     }
-    code, err := ioutil.ReadFile("test.code");
+    code, err := ioutil.ReadFile(os.Args[2]);
     if err != nil {
         panic(err)
     }
