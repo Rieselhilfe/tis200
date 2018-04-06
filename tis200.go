@@ -77,7 +77,9 @@ func (n *node) get_reg(reg_code byte) (succ bool, val int) { //TODO ANY and LAST
     case reg_code >= UP:
         if n.edges[reg_code-5].written {
             n.edges[reg_code-5].written = false
-            n.edges[reg_code-5].dest.waiting = false
+            if (n.edges[reg_code-5].dest != nil) {
+                n.edges[reg_code-5].dest.waiting = false
+            }
             return true, n.edges[reg_code-5].incoming
         }
     }
@@ -174,33 +176,36 @@ func (n *node) tick() (wants_to_write bool) {
     return wants_to_write
 }
 
+type inp_node struct {
+    values []int
+    edges []edge
+    vc int
+    waiting bool
+}
+
 type tis struct { //struct for the whole tesselated intelligence system
     loc int
+    inp_nodes []inp_node
     nodes []node
-    values []int //TODO needs a dedicated inp_node
-    vc int
     inp_amount int
     outp_amount int
 }
 
 func (t *tis) tick() { //method that gets called every tick
-    val := 0
-    if (t.vc < len(t.values)) {
-        val = t.values[t.vc]
-    }
-    for j, nod := range t.nodes {
-        if j<t.inp_amount && t.vc < len(t.values){
-            for k, ed := range nod.edges {
-                if ed.dest != nil && !nod.waiting {
-                    ed.dest.edges[(k+dirs/2)%dirs].incoming = val
+    for j, nod := range t.inp_nodes {
+        for k, ed := range nod.edges {
+            if ed.dest != nil{
+                if !ed.dest.edges[(k+dirs/2)%dirs].written && nod.vc < len(t.inp_nodes[j].values) {
+                    ed.dest.edges[(k+dirs/2)%dirs].incoming = nod.values[nod.vc]
                     ed.dest.edges[(k+dirs/2)%dirs].written = true
-                    t.nodes[j].waiting = true
-                    if (t.vc < len(t.values)) {
-                        t.vc += 1
-                    }
+                    t.inp_nodes[j].waiting = true
+                    t.inp_nodes[j].vc += 1
                 }
             }
-        } else if j<t.outp_amount+t.inp_amount{
+        }
+    }
+    for j, nod := range t.nodes {
+         if j<t.outp_amount{
             for k, ed := range nod.edges {
                 if ed.dest != nil {
                     if ed.written {
@@ -217,7 +222,7 @@ func (t *tis) tick() { //method that gets called every tick
 }
 
 func (t *tis) run() {
-    for i:=0;i<240;i++ {
+    for i:=0;i<100;i++ {
         t.tick()
     }
 }
@@ -228,24 +233,41 @@ func construct_tis(source string, code string) (ret_tis tis) { //produces the ti
     ret_tis.loc, _ = strconv.Atoi(base_config[0])
     ret_tis.inp_amount, _ = strconv.Atoi(base_config[1])
     ret_tis.outp_amount, _ = strconv.Atoi(base_config[2])
-    for _, v := range strings.Split(text[1], " ") {
-        temp, _ := strconv.Atoi(v)
-        ret_tis.values = append(ret_tis.values, temp)
-    }
-    ret_tis.nodes = make([]node, len(text[2:]))
-    for i, val := range text[2:] {
+    ret_tis.inp_nodes = make([]inp_node, len(text[1:ret_tis.inp_amount+1]))
+    ret_tis.nodes = make([]node, len(text[1+ret_tis.inp_amount:]))
+    for i, val := range text[1:] {
         if len(val) <= 2 {continue}
-        node_string := strings.Split(val, " ")
-        edge_temp := make([]edge, len(node_string[1:]))
-        for i, v := range node_string[1:] {
-            if v!="-1" {
+        if i<ret_tis.inp_amount {
+            inp_node_string := strings.Split(val, ";")
+            node_string := strings.Split(strings.Trim(inp_node_string[0]," "), " ")
+            edge_temp := make([]edge, len(node_string[1:]))
+            var values []int
+            for _, v := range strings.Split(strings.Trim(inp_node_string[1]," "), " ") {
                 temp, _ := strconv.Atoi(v)
-                edge_temp[i].dest = &ret_tis.nodes[temp] //reference to the node in tis: number of node minus inp und outp
-            } else if v=="-1"{
-                edge_temp[i].dest = nil
+                values = append(values, temp)
             }
+            for j, v := range node_string[1:] {
+                if v!="-1" && v!="0" {
+                    temp, _ := strconv.Atoi(v)
+                    edge_temp[j].dest = &ret_tis.nodes[temp-ret_tis.inp_amount] //reference to the node in tis: number of node minus inp und outp
+                } else {
+                    edge_temp[j].dest = nil
+                }
+            }
+            ret_tis.inp_nodes[i] = inp_node{values,edge_temp,0,false}
+        } else {
+            node_string := strings.Split(val, " ")
+            edge_temp := make([]edge, len(node_string[1:]))
+            for j, v := range node_string[1:] {
+                temp, _ := strconv.Atoi(v)
+                if temp>=ret_tis.inp_amount {
+                    edge_temp[j].dest = &ret_tis.nodes[temp-ret_tis.inp_amount] //reference to the node in tis: number of node minus inp
+                } else {
+                    edge_temp[j].dest = nil
+                }
+            }
+            ret_tis.nodes[i-ret_tis.inp_amount] = node{source_to_code(code,ret_tis.loc),0,0,0,edge_temp,false,nil}
         }
-        ret_tis.nodes[i] = node{source_to_code(code,ret_tis.loc),0,0,0,edge_temp,false,nil}
     }
     return
 }
